@@ -259,7 +259,8 @@ export default function ZwanzigFragen() {
   function stelleFrageText(text) {
     const t = (text || "").trim();
     if (!t || !game) return;
-    const newFragen = [...game.fragen, { frage: t, antwort: null }];
+    // Firebase speichert leere Arrays nicht -> game.fragen kann undefined sein
+    const newFragen = [...(game.fragen || []), { frage: t, antwort: null }];
     updateGame({ ...game, fragen: newFragen });
     setFrageInput("");
   }
@@ -269,7 +270,7 @@ export default function ZwanzigFragen() {
 
   // ─── Antwort geben ────────────────────────────────────────────────────────
   function gebeAntwort(idx, antwort) {
-    const newFragen = game.fragen.map((f, i) =>
+    const newFragen = (game.fragen || []).map((f, i) =>
       i === idx ? { ...f, antwort } : f
     );
     const beantwortet = newFragen.filter(f => f.antwort !== null).length;
@@ -594,7 +595,7 @@ export default function ZwanzigFragen() {
           {offeneFragen.length > 0 && amIAnswerer && (
             <div style={styles.section}>
               <p style={styles.sectionTitle}>Offene Fragen ({offeneFragen.length})</p>
-              {game.fragen.map((f, i) => f.antwort === null && (
+              {(game.fragen || []).map((f, i) => f.antwort === null && (
                 <div key={i} style={styles.frageCard}>
                   <p style={{ color: COLORS.text, margin: "0 0 10px" }}>„{f.frage}"</p>
                   <div style={{ display: "flex", gap: 8 }}>
@@ -698,11 +699,6 @@ export default function ZwanzigFragen() {
             </div>
           )}
 
-          {/* Diagnose (temporär) */}
-          <div style={{ color: COLORS.muted, fontSize: 10, textAlign: "center", opacity: 0.6, marginTop: 8 }}>
-            debug · {amIRater ? "Rater" : "Antworter"} · fragen:{game.fragen?.length ?? 0} · offen:{offeneFragen.length} · rev:{game.rev ?? "-"} · {connected ? "online" : "offline"}{error ? " · FEHLER" : ""}
-          </div>
-
           {/* Keine Fragen mehr */}
           {game.fragesRest === 0 && amIRater && offeneFragen.length === 0 && (
             <div style={{ textAlign: "center", padding: 16 }}>
@@ -779,7 +775,8 @@ function InfoModal({ open, onClose }) {
 
         <h4 style={{ color: COLORS.text, margin: "16px 0 8px" }}>Changelog</h4>
         <div style={{ fontSize: 12, color: COLORS.muted, lineHeight: 1.8 }}>
-          <div><span style={{ color: COLORS.accent }}>v1.0.4</span> – Gestellte Frage wird dem Frager angezeigt; Diagnose-Zeile</div>
+          <div><span style={{ color: COLORS.accent }}>v1.0.5</span> – Bugfix: Fragen lassen sich jetzt stellen (leeres-Array-Problem in Firebase behoben)</div>
+          <div><span style={{ color: COLORS.accent }}>v1.0.4</span> – Gestellte Frage wird dem Frager angezeigt</div>
           <div><span style={{ color: COLORS.accent }}>v1.0.3</span> – Schnell-Tipp-Fragen je Kategorie (ein Tipp = abgeschickt)</div>
           <div><span style={{ color: COLORS.accent }}>v1.0.2</span> – Frage-Button repariert (keine verschwindenden Fragen mehr), eigene Fragen frei eingebbar</div>
           <div><span style={{ color: COLORS.accent }}>v1.0.1</span> – Klare Fehlermeldungen bei Verbindungsproblemen</div>
