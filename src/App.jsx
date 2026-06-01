@@ -7,24 +7,37 @@ const FIREBASE_URL = "https://unser-einkaufszettel-default-rtdb.europe-west1.fir
 
 async function fbGet(path) {
   const res = await fetch(`${FIREBASE_URL}/${path}.json`);
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`Lesen fehlgeschlagen (HTTP ${res.status}) ${txt.slice(0, 140)}`);
+  }
   return res.json();
 }
 
 async function fbSet(path, data) {
-  await fetch(`${FIREBASE_URL}/${path}.json`, {
+  const res = await fetch(`${FIREBASE_URL}/${path}.json`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`Speichern fehlgeschlagen (HTTP ${res.status}) ${txt.slice(0, 140)}`);
+  }
+  return res.json();
 }
 
 async function fbUpdate(path, data) {
-  await fetch(`${FIREBASE_URL}/${path}.json`, {
+  const res = await fetch(`${FIREBASE_URL}/${path}.json`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`Aktualisieren fehlgeschlagen (HTTP ${res.status}) ${txt.slice(0, 140)}`);
+  }
+  return res.json();
 }
 
 // ─── Begriff-Datenbank ──────────────────────────────────────────────────────
@@ -99,6 +112,7 @@ const COLORS = {
 function useGameState(roomId) {
   const [game, setGame] = useState(null);
   const [connected, setConnected] = useState(false);
+  const [error, setError] = useState(null);
   const gameRef = useRef(null);
 
   useEffect(() => {
@@ -111,19 +125,30 @@ function useGameState(roomId) {
         gameRef.current = data;
       }
       setConnected(true);
+      setError(null);
+    }).catch(e => {
+      setConnected(false);
+      setError(e.message);
     });
 
     // Polling alle 800ms
     const interval = setInterval(async () => {
-      const data = await fbGet(`games/${roomId}`);
-      if (data) {
-        setGame(prev => {
-          if (JSON.stringify(prev) !== JSON.stringify(data)) {
-            gameRef.current = data;
-            return data;
-          }
-          return prev;
-        });
+      try {
+        const data = await fbGet(`games/${roomId}`);
+        setConnected(true);
+        setError(null);
+        if (data) {
+          setGame(prev => {
+            if (JSON.stringify(prev) !== JSON.stringify(data)) {
+              gameRef.current = data;
+              return data;
+            }
+            return prev;
+          });
+        }
+      } catch (e) {
+        setConnected(false);
+        setError(e.message);
       }
     }, 800);
 
@@ -134,10 +159,15 @@ function useGameState(roomId) {
     const updated = typeof newState === "function" ? newState(gameRef.current) : newState;
     gameRef.current = updated;
     setGame(updated);
-    await fbSet(`games/${roomId}`, updated);
+    try {
+      await fbSet(`games/${roomId}`, updated);
+      setError(null);
+    } catch (e) {
+      setError(e.message);
+    }
   };
 
-  return { game, updateGame, connected };
+  return { game, updateGame, connected, error };
 }
 
 function createNewGame(kategorie, begriff, ratePlayer) {
@@ -169,7 +199,7 @@ export default function ZwanzigFragen() {
   const [infoOpen, setInfoOpen] = useState(false);
   const [showBegriff, setShowBegriff] = useState(false);
 
-  const { game, updateGame, connected } = useGameState(roomId);
+  const { game, updateGame, connected, error } = useGameState(roomId);
 
   const amIRater = game && myRole === game.ratePlayer;
   const amIAnswerer = game && myRole !== game.ratePlayer;
@@ -237,26 +267,44 @@ export default function ZwanzigFragen() {
   // ─── Raum erstellen ───────────────────────────────────────────────────────
   async function createRoom(role) {
     const id = Math.random().toString(36).slice(2, 7).toUpperCase();
-    setRoomId(id);
-    setMyRole(role);
     const initialState = {
       phase: "lobby",
       punkte: { marc: 0, melli: 0 },
       runde: 0,
       players: { [role]: true },
     };
-    await fbSet(`games/${id}`, initialState);
+    try {
+      await fbSet(`games/${id}`, initialState);
+    } catch (e) {
+      alert("Raum konnte nicht erstellt werden.\n\n" + e.message +
+        "\n\nMeist liegt das an den Firebase-Datenbank-Regeln (Schreibzugriff gesperrt).");
+      return;
+    }
+    setRoomId(id);
+    setMyRole(role);
     setScreen("lobby");
   }
 
   async function joinRoom(role) {
     if (!inputRoom.trim()) return;
     const id = inputRoom.trim().toUpperCase();
-    const existing = await fbGet(`games/${id}`);
+    let existing;
+    try {
+      existing = await fbGet(`games/${id}`);
+    } catch (e) {
+      alert("Verbindung zur Datenbank fehlgeschlagen.\n\n" + e.message +
+        "\n\nMeist liegt das an den Firebase-Datenbank-Regeln (Lesezugriff gesperrt).");
+      return;
+    }
     if (!existing) { alert("Raum nicht gefunden! Bitte Code prüfen."); return; }
     setRoomId(id);
     setMyRole(role);
-    await fbUpdate(`games/${id}`, { players: { ...existing.players, [role]: true } });
+    try {
+      await fbUpdate(`games/${id}`, { players: { ...existing.players, [role]: true } });
+    } catch (e) {
+      alert("Beitreten fehlgeschlagen.\n\n" + e.message);
+      return;
+    }
     setScreen("game");
   }
 
@@ -463,6 +511,7 @@ export default function ZwanzigFragen() {
     // Phase: Spielen
     return (
       <div style={styles.root}>
+        <ConnBanner error={error} />
         <InfoModal open={infoOpen} onClose={() => setInfoOpen(false)} />
         <button style={styles.infoBtn} onClick={() => setInfoOpen(true)}>i</button>
 
@@ -607,6 +656,20 @@ export default function ZwanzigFragen() {
   return null;
 }
 
+// ─── Verbindungs-Banner ──────────────────────────────────────────────────────
+function ConnBanner({ error }) {
+  if (!error) return null;
+  return (
+    <div style={{
+      position: "fixed", top: 0, left: 0, right: 0, zIndex: 300,
+      background: COLORS.red, color: "#fff", fontSize: 12,
+      padding: "8px 44px 8px 12px", textAlign: "center", lineHeight: 1.4,
+    }}>
+      ⚠️ Keine Verbindung zur Datenbank — {error}
+    </div>
+  );
+}
+
 // ─── Score Board ─────────────────────────────────────────────────────────────
 function ScoreBoard({ game, myRole, big }) {
   if (!game) return null;
@@ -653,6 +716,7 @@ function InfoModal({ open, onClose }) {
 
         <h4 style={{ color: COLORS.text, margin: "16px 0 8px" }}>Changelog</h4>
         <div style={{ fontSize: 12, color: COLORS.muted, lineHeight: 1.8 }}>
+          <div><span style={{ color: COLORS.accent }}>v1.0.1</span> – Klare Fehlermeldungen bei Verbindungsproblemen</div>
           <div><span style={{ color: COLORS.accent }}>v1.0.0</span> – Erste Version: Kategorien, Fragen, Punktestand</div>
         </div>
 
