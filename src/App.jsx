@@ -91,6 +91,34 @@ const KATEGORIE_ICONS = {
   "Dinge / Objekte": "📦"
 };
 
+// ─── Schnell-Tipp-Fragen je Kategorie ───────────────────────────────────────
+const SCHNELLFRAGEN = {
+  "Personen": [
+    "Lebt die Person noch?", "Ist es ein Mann?", "Ist die Person berühmt?",
+    "Ist es eine echte Person?", "Ist es ein/e Sportler/in?", "Ist es ein/e Musiker/in?"
+  ],
+  "Tiere": [
+    "Lebt es an Land?", "Hat es vier Beine?", "Ist es ein Haustier?",
+    "Kann es fliegen?", "Ist es größer als ein Hund?", "Lebt es im Wasser?"
+  ],
+  "Orte": [
+    "Liegt es in Europa?", "Ist es eine Stadt?", "Kann man dort Urlaub machen?",
+    "Ist es von Menschen gebaut?", "Ist es in Deutschland?", "Liegt es am Wasser?"
+  ],
+  "Filme & Serien": [
+    "Ist es ein Film?", "Ist es eine Serie?", "Gibt es darin Action?",
+    "Ist es eine Liebesgeschichte?", "Ist es Animation/Zeichentrick?", "Ist es von Disney?"
+  ],
+  "Essen & Trinken": [
+    "Ist es süß?", "Kann man es trinken?", "Ist es warm?",
+    "Kommt es aus Italien?", "Ist es eine Nachspeise?", "Isst man es mit der Hand?"
+  ],
+  "Dinge / Objekte": [
+    "Ist es aus Metall?", "Passt es in eine Hand?", "Hat es mit Musik zu tun?",
+    "Benutzt man es draußen?", "Ist es elektronisch?", "Findet man es zu Hause?"
+  ]
+};
+
 // ─── Farb-Palette ────────────────────────────────────────────────────────────
 const COLORS = {
   bg: "#0a0a12",
@@ -228,11 +256,15 @@ export default function ZwanzigFragen() {
   }
 
   // ─── Frage stellen ────────────────────────────────────────────────────────
-  function stelleFrage() {
-    if (!frageInput.trim() || !game) return;
-    const newFragen = [...game.fragen, { frage: frageInput.trim(), antwort: null }];
+  function stelleFrageText(text) {
+    const t = (text || "").trim();
+    if (!t || !game) return;
+    const newFragen = [...game.fragen, { frage: t, antwort: null }];
     updateGame({ ...game, fragen: newFragen });
     setFrageInput("");
+  }
+  function stelleFrage() {
+    stelleFrageText(frageInput);
   }
 
   // ─── Antwort geben ────────────────────────────────────────────────────────
@@ -609,7 +641,7 @@ export default function ZwanzigFragen() {
               <div style={{ display: "flex", gap: 8 }}>
                 <input
                   style={{ ...styles.input, flex: 1 }}
-                  placeholder="Ist es ein Tier?"
+                  placeholder="Eigene Frage eintippen…"
                   value={frageInput}
                   onChange={e => setFrageInput(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && stelleFrage()}
@@ -618,6 +650,20 @@ export default function ZwanzigFragen() {
                   onClick={stelleFrage}>
                   →
                 </button>
+              </div>
+              <p style={{ color: COLORS.muted, fontSize: 11, margin: "4px 0 0" }}>
+                Tippe eine eigene Frage – oder wähle einen Vorschlag:
+              </p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {(SCHNELLFRAGEN[game.kategorie] || []).map(q => (
+                  <button
+                    key={q}
+                    style={styles.quickChip}
+                    onClick={() => stelleFrageText(q)}
+                  >
+                    {q}
+                  </button>
+                ))}
               </div>
             </div>
           )}
@@ -722,6 +768,7 @@ function InfoModal({ open, onClose }) {
 
         <h4 style={{ color: COLORS.text, margin: "16px 0 8px" }}>Changelog</h4>
         <div style={{ fontSize: 12, color: COLORS.muted, lineHeight: 1.8 }}>
+          <div><span style={{ color: COLORS.accent }}>v1.0.3</span> – Schnell-Tipp-Fragen je Kategorie (ein Tipp = abgeschickt)</div>
           <div><span style={{ color: COLORS.accent }}>v1.0.2</span> – Frage-Button repariert (keine verschwindenden Fragen mehr), eigene Fragen frei eingebbar</div>
           <div><span style={{ color: COLORS.accent }}>v1.0.1</span> – Klare Fehlermeldungen bei Verbindungsproblemen</div>
           <div><span style={{ color: COLORS.accent }}>v1.0.0</span> – Erste Version: Kategorien, Fragen, Punktestand</div>
@@ -907,6 +954,16 @@ const styles = {
     border: `1px solid ${COLORS.border}`,
     borderRadius: 14,
     padding: "14px",
+  },
+  quickChip: {
+    padding: "8px 12px",
+    borderRadius: 999,
+    border: `1px solid ${COLORS.border}`,
+    background: COLORS.card,
+    color: COLORS.text,
+    fontSize: 13,
+    fontFamily: "inherit",
+    cursor: "pointer",
   },
   antwortRow: {
     display: "flex",
