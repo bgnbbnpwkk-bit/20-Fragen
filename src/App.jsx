@@ -273,7 +273,7 @@ export default function ZwanzigFragen() {
     const newFragen = (game.fragen || []).map((f, i) =>
       i === idx ? { ...f, antwort } : f
     );
-    const beantwortet = newFragen.filter(f => f.antwort !== null).length;
+    const beantwortet = newFragen.filter(f => f.antwort).length;
     updateGame({
       ...game,
       fragen: newFragen,
@@ -350,8 +350,10 @@ export default function ZwanzigFragen() {
   const roleColor = (r) => r === "marc" ? COLORS.marc : COLORS.melli;
   const roleName = (r) => r === "marc" ? "Marc" : "Melli";
 
-  const offeneFragen = (game?.fragen || []).filter(f => f.antwort === null);
-  const beantwortete = (game?.fragen || []).filter(f => f.antwort !== null);
+  // "unbeantwortet" über !f.antwort prüfen: Firebase verwirft null -> antwort
+  // kann beim Auslesen undefined sein (=== null würde dann nicht greifen)
+  const offeneFragen = (game?.fragen || []).filter(f => !f.antwort);
+  const beantwortete = (game?.fragen || []).filter(f => f.antwort);
 
   // ─── Screens ─────────────────────────────────────────────────────────────
   if (screen === "start") return (
@@ -595,7 +597,7 @@ export default function ZwanzigFragen() {
           {offeneFragen.length > 0 && amIAnswerer && (
             <div style={styles.section}>
               <p style={styles.sectionTitle}>Offene Fragen ({offeneFragen.length})</p>
-              {(game.fragen || []).map((f, i) => f.antwort === null && (
+              {(game.fragen || []).map((f, i) => !f.antwort && (
                 <div key={i} style={styles.frageCard}>
                   <p style={{ color: COLORS.text, margin: "0 0 10px" }}>„{f.frage}"</p>
                   <div style={{ display: "flex", gap: 8 }}>
@@ -775,6 +777,7 @@ function InfoModal({ open, onClose }) {
 
         <h4 style={{ color: COLORS.text, margin: "16px 0 8px" }}>Changelog</h4>
         <div style={{ fontSize: 12, color: COLORS.muted, lineHeight: 1.8 }}>
+          <div><span style={{ color: COLORS.accent }}>v1.0.6</span> – Bugfix: Antworter sieht jetzt die Ja/Nein/Manchmal-Knöpfe</div>
           <div><span style={{ color: COLORS.accent }}>v1.0.5</span> – Bugfix: Fragen lassen sich jetzt stellen (leeres-Array-Problem in Firebase behoben)</div>
           <div><span style={{ color: COLORS.accent }}>v1.0.4</span> – Gestellte Frage wird dem Frager angezeigt</div>
           <div><span style={{ color: COLORS.accent }}>v1.0.3</span> – Schnell-Tipp-Fragen je Kategorie (ein Tipp = abgeschickt)</div>
