@@ -139,6 +139,9 @@ function useGameState(roomId) {
         setError(null);
         if (data) {
           setGame(prev => {
+            // Eigene, noch nicht bestätigte Änderungen NICHT durch veraltete
+            // Server-Daten überschreiben (verhindert "verschwindende" Fragen).
+            if ((data.rev || 0) < (gameRef.current?.rev || 0)) return prev;
             if (JSON.stringify(prev) !== JSON.stringify(data)) {
               gameRef.current = data;
               return data;
@@ -156,7 +159,9 @@ function useGameState(roomId) {
   }, [roomId]);
 
   const updateGame = async (newState) => {
-    const updated = typeof newState === "function" ? newState(gameRef.current) : newState;
+    const base = typeof newState === "function" ? newState(gameRef.current) : newState;
+    // Versions-Zähler hochzählen, damit veraltete Polls unsere Änderung nicht zurücksetzen
+    const updated = { ...base, rev: (gameRef.current?.rev || 0) + 1 };
     gameRef.current = updated;
     setGame(updated);
     try {
@@ -709,6 +714,7 @@ function InfoModal({ open, onClose }) {
         <ul style={{ color: COLORS.muted, fontSize: 13, paddingLeft: 20, lineHeight: 1.8 }}>
           <li>Echtzeit-Multiplayer (Raum-Code teilen)</li>
           <li>6 Kategorien mit je 20 Begriffen</li>
+          <li>Eigene Fragen frei formulieren</li>
           <li>Ja / Nein / Manchmal Antworten</li>
           <li>Punktestand über mehrere Runden</li>
           <li>Maximal 20 Fragen pro Runde</li>
@@ -716,6 +722,7 @@ function InfoModal({ open, onClose }) {
 
         <h4 style={{ color: COLORS.text, margin: "16px 0 8px" }}>Changelog</h4>
         <div style={{ fontSize: 12, color: COLORS.muted, lineHeight: 1.8 }}>
+          <div><span style={{ color: COLORS.accent }}>v1.0.2</span> – Frage-Button repariert (keine verschwindenden Fragen mehr), eigene Fragen frei eingebbar</div>
           <div><span style={{ color: COLORS.accent }}>v1.0.1</span> – Klare Fehlermeldungen bei Verbindungsproblemen</div>
           <div><span style={{ color: COLORS.accent }}>v1.0.0</span> – Erste Version: Kategorien, Fragen, Punktestand</div>
         </div>
