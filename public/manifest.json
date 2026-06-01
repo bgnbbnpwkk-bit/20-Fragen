@@ -1,0 +1,21 @@
+{
+  "name": "20 Fragen – Team Melli & Marc",
+  "short_name": "20 Fragen",
+  "start_url": "/20-Fragen/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0a12",
+  "theme_color": "#0a0a12",
+  "icons": [
+    {
+      "src": "https://fav.farm/❓",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://fav.farm/❓",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
