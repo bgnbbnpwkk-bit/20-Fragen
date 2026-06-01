@@ -612,9 +612,15 @@ export default function ZwanzigFragen() {
 
           {offeneFragen.length > 0 && amIRater && (
             <div style={styles.section}>
-              <p style={{ color: COLORS.muted, textAlign: "center", fontSize: 13 }}>
-                ⏳ Warte auf Antwort...
-              </p>
+              <p style={styles.sectionTitle}>Deine gestellte Frage</p>
+              {offeneFragen.map((f, i) => (
+                <div key={i} style={styles.frageCard}>
+                  <p style={{ color: COLORS.text, margin: "0 0 6px" }}>„{f.frage}"</p>
+                  <p style={{ color: COLORS.muted, fontSize: 12, margin: 0 }}>
+                    ⏳ Wartet auf Antwort von {roleName(game.ratePlayer === "marc" ? "melli" : "marc")}…
+                  </p>
+                </div>
+              ))}
             </div>
           )}
 
@@ -692,6 +698,11 @@ export default function ZwanzigFragen() {
             </div>
           )}
 
+          {/* Diagnose (temporär) */}
+          <div style={{ color: COLORS.muted, fontSize: 10, textAlign: "center", opacity: 0.6, marginTop: 8 }}>
+            debug · {amIRater ? "Rater" : "Antworter"} · fragen:{game.fragen?.length ?? 0} · offen:{offeneFragen.length} · rev:{game.rev ?? "-"} · {connected ? "online" : "offline"}{error ? " · FEHLER" : ""}
+          </div>
+
           {/* Keine Fragen mehr */}
           {game.fragesRest === 0 && amIRater && offeneFragen.length === 0 && (
             <div style={{ textAlign: "center", padding: 16 }}>
@@ -768,6 +779,7 @@ function InfoModal({ open, onClose }) {
 
         <h4 style={{ color: COLORS.text, margin: "16px 0 8px" }}>Changelog</h4>
         <div style={{ fontSize: 12, color: COLORS.muted, lineHeight: 1.8 }}>
+          <div><span style={{ color: COLORS.accent }}>v1.0.4</span> – Gestellte Frage wird dem Frager angezeigt; Diagnose-Zeile</div>
           <div><span style={{ color: COLORS.accent }}>v1.0.3</span> – Schnell-Tipp-Fragen je Kategorie (ein Tipp = abgeschickt)</div>
           <div><span style={{ color: COLORS.accent }}>v1.0.2</span> – Frage-Button repariert (keine verschwindenden Fragen mehr), eigene Fragen frei eingebbar</div>
           <div><span style={{ color: COLORS.accent }}>v1.0.1</span> – Klare Fehlermeldungen bei Verbindungsproblemen</div>
