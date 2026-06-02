@@ -1,4 +1,4 @@
-const CACHE = 'zwanzig-fragen-v7';
+const CACHE = 'zwanzig-fragen-v8';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

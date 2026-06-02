@@ -1,12 +1,35 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, createContext, useContext } from "react";
+import {
+  onAuthStateChanged, signInWithPopup, signInWithRedirect,
+  getRedirectResult, signOut,
+} from "firebase/auth";
+import { auth, googleProvider } from "./firebase";
 
-// ─── Firebase Realtime DB – REST API (kein SDK nötig) ──────────────────────
-// Firebase Realtime DB – Projekt "unser-einkaufszettel"
-// HINWEIS: URL muss ggf. angepasst werden (us-central1 vs europe-west1)
+// ─── Zugriff nur für diese Google-Accounts ──────────────────────────────────
+const ALLOWED_EMAILS = [
+  "marc.saenger1975@gmail.com",
+  "melaniechabane1975@gmail.com",
+];
+
+// Kontext, damit z. B. das i-Panel an User/Logout kommt (ohne Props durchzureichen)
+const AuthContext = createContext({ user: null, onLogout: () => {} });
+
+// ─── Firebase Realtime DB – REST API ────────────────────────────────────────
+// Spiel-Sync läuft weiterhin über die REST-API. Falls die Security Rules Login
+// verlangen, wird das ID-Token als ?auth=… mitgeschickt (bei offenen Rules egal).
 const FIREBASE_URL = "https://unser-einkaufszettel-default-rtdb.europe-west1.firebasedatabase.app";
 
+async function authQuery() {
+  try {
+    const token = await auth.currentUser?.getIdToken();
+    return token ? `?auth=${token}` : "";
+  } catch {
+    return "";
+  }
+}
+
 async function fbGet(path) {
-  const res = await fetch(`${FIREBASE_URL}/${path}.json`);
+  const res = await fetch(`${FIREBASE_URL}/${path}.json${await authQuery()}`);
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
     throw new Error(`Lesen fehlgeschlagen (HTTP ${res.status}) ${txt.slice(0, 140)}`);
@@ -15,7 +38,7 @@ async function fbGet(path) {
 }
 
 async function fbSet(path, data) {
-  const res = await fetch(`${FIREBASE_URL}/${path}.json`, {
+  const res = await fetch(`${FIREBASE_URL}/${path}.json${await authQuery()}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -28,7 +51,7 @@ async function fbSet(path, data) {
 }
 
 async function fbUpdate(path, data) {
-  const res = await fetch(`${FIREBASE_URL}/${path}.json`, {
+  const res = await fetch(`${FIREBASE_URL}/${path}.json${await authQuery()}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -219,8 +242,157 @@ function createNewGame(kategorie, begriff, ratePlayer) {
   };
 }
 
+// ─── Auth-Gate (Login-Pflicht) ──────────────────────────────────────────────
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
+  const [signingIn, setSigningIn] = useState(false);
+
+  useEffect(() => {
+    // Falls per Redirect angemeldet wurde, hier abschließen
+    getRedirectResult(auth).catch(e => setAuthError(uebersetzeAuthFehler(e)));
+
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (u) {
+        const email = (u.email || "").toLowerCase();
+        if (ALLOWED_EMAILS.includes(email)) {
+          setUser(u);
+          setAuthError(null);
+        } else {
+          // Nicht freigeschalteter Account -> sofort abmelden
+          signOut(auth);
+          setUser(null);
+          setAuthError(
+            `Schade, der Account „${u.email}" ist nicht freigeschaltet. ` +
+            `Diese App ist nur für Team Melli & Marc. 💙🩷`
+          );
+        }
+      } else {
+        setUser(null);
+      }
+      setAuthLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  async function login() {
+    setAuthError(null);
+    setSigningIn(true);
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (e) {
+      if (["auth/popup-blocked", "auth/operation-not-supported-in-this-environment", "auth/cancelled-popup-request"].includes(e.code)) {
+        try { await signInWithRedirect(auth, googleProvider); return; }
+        catch (e2) { setAuthError(uebersetzeAuthFehler(e2)); }
+      } else if (e.code !== "auth/popup-closed-by-user") {
+        setAuthError(uebersetzeAuthFehler(e));
+      }
+    } finally {
+      setSigningIn(false);
+    }
+  }
+
+  function logout() {
+    signOut(auth);
+  }
+
+  if (authLoading) return <SplashScreen text="Einen Moment…" />;
+  if (!user) return <LoginScreen onLogin={login} error={authError} signingIn={signingIn} />;
+
+  return (
+    <AuthContext.Provider value={{ user, onLogout: logout }}>
+      <ZwanzigFragen />
+    </AuthContext.Provider>
+  );
+}
+
+function uebersetzeAuthFehler(e) {
+  if (!e) return null;
+  switch (e.code) {
+    case "auth/unauthorized-domain":
+      return "Diese Adresse ist in Firebase noch nicht freigegeben. Bitte die Domain bgnbbnpwkk-bit.github.io in den autorisierten Domains ergänzen.";
+    case "auth/operation-not-allowed":
+      return "Die Google-Anmeldung ist im Firebase-Projekt noch nicht aktiviert.";
+    case "auth/network-request-failed":
+      return "Netzwerkfehler – bitte Internetverbindung prüfen und erneut versuchen.";
+    case "auth/popup-closed-by-user":
+    case "auth/cancelled-popup-request":
+      return null;
+    default:
+      return "Anmeldung fehlgeschlagen: " + (e.message || e.code || "Unbekannter Fehler");
+  }
+}
+
+// ─── Login- & Splash-Screen ─────────────────────────────────────────────────
+function SplashScreen({ text }) {
+  return (
+    <div style={styles.root}>
+      <div style={styles.centerBox}>
+        <span style={{ fontSize: 56 }}>❓</span>
+        <p style={{ color: COLORS.muted, marginTop: 16 }}>{text}</p>
+      </div>
+    </div>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.5 29.5 4.5 24 4.5 13.2 4.5 4.5 13.2 4.5 24S13.2 43.5 24 43.5 43.5 34.8 43.5 24c0-1.2-.1-2.3-.3-3.5z" />
+      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12.5 24 12.5c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.5 29.5 4.5 24 4.5 16.3 4.5 9.7 8.9 6.3 14.7z" />
+      <path fill="#4CAF50" d="M24 43.5c5.4 0 10.3-2 14-5.3l-6.5-5.5c-2 1.5-4.6 2.3-7.5 2.3-5.2 0-9.6-3.3-11.2-8l-6.6 5.1C9.6 39 16.2 43.5 24 43.5z" />
+      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4 5.5l6.5 5.5c-.5.4 7-5 7-15 0-1.2-.1-2.3-.2-3.5z" />
+    </svg>
+  );
+}
+
+function LoginScreen({ onLogin, error, signingIn }) {
+  return (
+    <div style={styles.root}>
+      <div style={styles.centerBox}>
+        <div style={styles.logo}>
+          <span style={{ fontSize: 56 }}>❓</span>
+          <h1 style={styles.title}>20 Fragen</h1>
+          <p style={styles.subtitle}>von Team Melli & Marc</p>
+        </div>
+
+        <p style={{ color: COLORS.muted, textAlign: "center", marginBottom: 24, lineHeight: 1.6 }}>
+          Bitte melde dich an, um zu spielen.
+        </p>
+
+        <button
+          style={{
+            ...styles.btn, background: "#fff", color: "#1f1f1f", fontWeight: 700, width: "100%",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+            opacity: signingIn ? 0.7 : 1,
+          }}
+          onClick={onLogin}
+          disabled={signingIn}
+        >
+          <GoogleIcon /> {signingIn ? "Anmeldung läuft…" : "Mit Google anmelden"}
+        </button>
+
+        {error && (
+          <div style={{
+            marginTop: 16, color: COLORS.red, fontSize: 13, textAlign: "center", lineHeight: 1.5,
+            background: "rgba(248,113,113,0.08)", border: `1px solid ${COLORS.red}`,
+            borderRadius: 12, padding: "12px 14px",
+          }}>
+            {error}
+          </div>
+        )}
+
+        <p style={{ color: COLORS.muted, fontSize: 11, textAlign: "center", marginTop: 24 }}>
+          Nur für Marc &amp; Melli freigeschaltet 💙🩷
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Hauptkomponente ─────────────────────────────────────────────────────────
-export default function ZwanzigFragen() {
+function ZwanzigFragen() {
   const [screen, setScreen] = useState("start"); // start | join | lobby | game
   const [myRole, setMyRole] = useState(null); // "marc" | "melli"
   const [roomId, setRoomId] = useState("");
@@ -755,6 +927,7 @@ function ScoreBoard({ game, myRole, big }) {
 
 // ─── Info Modal ───────────────────────────────────────────────────────────────
 function InfoModal({ open, onClose }) {
+  const { user, onLogout } = useContext(AuthContext);
   if (!open) return null;
   return (
     <div style={styles.modalOverlay} onClick={onClose}>
@@ -777,6 +950,7 @@ function InfoModal({ open, onClose }) {
 
         <h4 style={{ color: COLORS.text, margin: "16px 0 8px" }}>Changelog</h4>
         <div style={{ fontSize: 12, color: COLORS.muted, lineHeight: 1.8 }}>
+          <div><span style={{ color: COLORS.accent }}>v1.1.0</span> – Google-Login (nur Marc &amp; Melli), Abmelden im i-Panel</div>
           <div><span style={{ color: COLORS.accent }}>v1.0.6</span> – Bugfix: Antworter sieht jetzt die Ja/Nein/Manchmal-Knöpfe</div>
           <div><span style={{ color: COLORS.accent }}>v1.0.5</span> – Bugfix: Fragen lassen sich jetzt stellen (leeres-Array-Problem in Firebase behoben)</div>
           <div><span style={{ color: COLORS.accent }}>v1.0.4</span> – Gestellte Frage wird dem Frager angezeigt</div>
@@ -788,10 +962,25 @@ function InfoModal({ open, onClose }) {
 
         <h4 style={{ color: COLORS.text, margin: "16px 0 8px" }}>Tech-Stack</h4>
         <div style={{ fontSize: 12, color: COLORS.muted, lineHeight: 1.8 }}>
-          React · Firebase Realtime DB · GitHub Pages
+          React · Firebase Auth (Google) · Firebase Realtime DB · GitHub Pages
         </div>
 
-        <button style={{ ...styles.btn, width: "100%", marginTop: 20, background: COLORS.accent, color: "#000" }}
+        {user && (
+          <>
+            <h4 style={{ color: COLORS.text, margin: "16px 0 8px" }}>Account</h4>
+            <div style={{ fontSize: 12, color: COLORS.muted, lineHeight: 1.6 }}>
+              Angemeldet als <span style={{ color: COLORS.text }}>{user.email}</span>
+            </div>
+            <button
+              style={{ ...styles.btn, width: "100%", marginTop: 12, background: "transparent", border: `1px solid ${COLORS.red}`, color: COLORS.red }}
+              onClick={() => { onClose(); onLogout(); }}
+            >
+              Abmelden
+            </button>
+          </>
+        )}
+
+        <button style={{ ...styles.btn, width: "100%", marginTop: 12, background: COLORS.accent, color: "#000" }}
           onClick={onClose}>Schließen</button>
       </div>
     </div>
